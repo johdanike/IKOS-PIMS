@@ -1,0 +1,13 @@
+# C++ Build Artifacts
+cpp-backend/build/
+cpp-backend/vcpkg_installed/
+*.o
+*.a
+
+# Java Build Artifacts
+java-backend/target/
+java-backend/.mvn/
+
+# IDE files
+.vscode/
+.idea/
