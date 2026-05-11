@@ -1,0 +1,80 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-1234-56789abcdef0",
+    "name": "IKOS-PIMS Dual-Stack Contract",
+    "description": "Automated contract testing for the Passenger Information Management System across both the Java Cloud Node and the C++ Edge Node.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Java Cloud Node (Port 8080)",
+      "item": [
+        {
+          "name": "Register Passenger (Java)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"firstName\": \"Alan\",\n    \"lastName\": \"Turing\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8080/api/v1/passengers",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "api",
+                "v1",
+                "passengers"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. C++ Edge Node (Port 8081)",
+      "item": [
+        {
+          "name": "Register Passenger (C++)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"firstName\": \"Ada\",\n    \"lastName\": \"Lovelace\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8081/api/v1/passengers",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8081",
+              "path": [
+                "api",
+                "v1",
+                "passengers"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
