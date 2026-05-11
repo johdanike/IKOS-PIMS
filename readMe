@@ -1,0 +1,366 @@
+# IKOS-PIMS — Passenger Information Management System
+
+> A distributed, dual-stack backend proof-of-concept for modern German rail and transit networks.  
+> Implements a unified Passenger Registry across **C++ (Oatpp)** and **Java (Spring Boot)** — both targeting a shared, pessimistically-locked PostgreSQL database.
+
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Technology Stack](#technology-stack)
+- [Project Structure](#project-structure)
+- [Database Schema](#database-schema)
+- [Getting Started](#getting-started)
+- [API Reference](#api-reference)
+- [Git Workflow](#git-workflow)
+- [Roadmap](#roadmap)
+
+---
+
+## Overview
+
+IKOS-PIMS is a backend system built for **IKOS**, a German public transport operator, to manage passenger data across heterogeneous infrastructure environments.
+
+The core design question this project answers: **can a high-performance C++ edge node and a JVM-based cloud node share a single source of truth without data corruption?**
+
+The answer is yes — via **database-level pessimistic locking** on the shared PostgreSQL instance. Both services are operationally independent, speak the same REST contract, and target the same `pims_db` database. Neither service knows the other exists.
+
+### What was built
+
+- A **C++ backend** (Oatpp framework) — low-latency, memory-safe, built for resource-constrained edge hardware or on-board train servers
+- A **Java backend** (Spring Boot 3.x) — JVM-based, ecosystem-rich, built for centralised cloud processing
+- A **shared PostgreSQL 16** database instance — single source of truth with transactional integrity
+- Full **Docker Compose** orchestration — one command brings up the entire system
+
+---
+
+## Architecture
+
+### Dual-stack MVC
+
+Both backends follow a standard **MVC / layered architecture**:
+
+```
+HTTP Request
+     │
+     ▼
+┌─────────────┐
+│  Controller │  ← handles HTTP, parses request, returns response
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│  Repository │  ← data access layer, talks directly to PostgreSQL
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│  PostgreSQL │  ← shared pims_db, pessimistic locking on writes
+└─────────────┘
+```
+
+### System topology
+
+```
+                    ┌──────────────────────────┐
+                    │     Client / Postman      │
+                    └────┬─────────────────┬────┘
+                         │                 │
+              HTTP :8081  │                 │  HTTP :8082
+                         │                 │
+               ┌─────────▼──────┐  ┌───────▼──────────┐
+               │  C++ Backend   │  │  Java Backend     │
+               │  Oatpp         │  │  Spring Boot 3.x  │
+               │  CMake + vcpkg │  │  Maven + JPA      │
+               └─────────┬──────┘  └───────┬──────────┘
+                         │                 │
+                         └────────┬────────┘
+                                  │
+                         ┌────────▼────────┐
+                         │   PostgreSQL 16  │
+                         │   pims_db        │
+                         │   port: 5432     │
+                         └─────────────────┘
+```
+
+### Why two stacks?
+
+| Concern | C++ (Oatpp) | Java (Spring Boot) |
+|---|---|---|
+| Target environment | Edge / on-board hardware | Cloud / centralised server |
+| Memory model | RAII + smart pointers | JVM garbage collection |
+| Concurrency | Async event loop | Managed thread pool |
+| DB access | Native SQL via libpqxx | Spring Data JPA (Hibernate) |
+| Build | CMake + vcpkg | Maven |
+| Startup time | ~ms | ~seconds |
+| Ecosystem | Lean, minimal deps | Rich, rapid development |
+
+Both expose an **identical REST API contract** — a client can target either port interchangeably.
+
+---
+
+## Technology Stack
+
+### C++ Backend (`cpp-backend/`)
+
+| Concern | Technology |
+|---|---|
+| Language | C++17 |
+| HTTP Framework | Oatpp |
+| Database | PostgreSQL via libpqxx |
+| Build system | CMake |
+| Package manager | vcpkg |
+| Containerisation | Docker |
+
+### Java Backend (`java-pims-backend/`)
+
+| Concern | Technology |
+|---|---|
+| Language | Java 17 |
+| Framework | Spring Boot 3.x |
+| Data access | Spring Data JPA (Hibernate) |
+| Database dialect | PostgreSQL |
+| Build system | Maven |
+| Containerisation | Docker |
+
+### Infrastructure
+
+| Concern | Technology |
+|---|---|
+| Database | PostgreSQL 16 |
+| Orchestration | Docker Compose |
+| Network | Docker bridge (`pims-network`) |
+
+---
+
+## Project Structure
+
+```
+IKOS-PIMS/
+├── docker-compose.yml              # Full stack orchestration
+├── .gitignore
+├── .gitattributes
+│
+├── cpp-backend/                    # C++ Oatpp service (port 8081)
+│   ├── CMakeLists.txt
+│   ├── Dockerfile
+│   ├── vcpkg.json                  # C++ dependency manifest
+│   └── src/
+│       ├── main.cpp                # Entry point, Oatpp app bootstrap
+│       ├── AppComponent.hpp        # DI component wiring
+│       ├── controller/
+│       │   └── PassengerController.hpp   # HTTP routes + handlers
+│       ├── dto/
+│       │   └── PassengerDto.hpp          # Request/response DTOs
+│       └── repository/
+│           ├── PostgresPassengerRepo.hpp # Repository interface
+│           └── PostgresPassengerRepo.cpp # libpqxx implementation
+│
+└── java-pims-backend/              # Java Spring Boot service (port 8082)
+    ├── pom.xml
+    ├── Dockerfile
+    └── src/
+        ├── main/
+        │   ├── java/com/ikos_by_john_daniel/pims/
+        │   │   ├── PimsApplication.java          # Spring Boot entry point
+        │   │   ├── controller/
+        │   │   │   └── PassengerController.java  # REST controller
+        │   │   └── model/
+        │   │       ├── data/
+        │   │       │   └── Passenger.java        # JPA entity
+        │   │       └── repository/
+        │   │           └── PassengerRepository.java  # JpaRepository
+        │   └── resources/
+        │       └── application.properties        # DB config, JPA settings
+        └── test/
+```
+
+---
+
+## Database Schema
+
+Both backends share a single `pims_db` PostgreSQL database.
+
+```sql
+CREATE TABLE passengers (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    first_name    VARCHAR NOT NULL,
+    last_name     VARCHAR NOT NULL,
+    ticket_status VARCHAR NOT NULL DEFAULT 'CONFIRMED',
+    created_at    TIMESTAMP DEFAULT NOW()
+);
+```
+
+The Java service manages schema via Hibernate (`ddl-auto=update`).  
+The C++ service accesses the same table via raw parameterised SQL through libpqxx.
+
+**Concurrency safety:** Both services use PostgreSQL-level pessimistic locking (`SELECT ... FOR UPDATE`) on write operations to prevent double-booking or manifest corruption when both nodes are active simultaneously.
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Docker and Docker Compose
+- Git
+
+### One-command startup
+
+```bash
+git clone https://github.com/johdanike/ikos-pims.git
+cd IKOS-PIMS
+docker compose up --build -d
+```
+
+This single command will:
+1. Pull PostgreSQL 16 and initialise `pims_db`
+2. Compile the C++ binary inside Docker using native Ubuntu packages
+3. Package and launch the Spring Boot JAR
+4. Connect all three containers on a shared Docker network
+
+### Verify services are running
+
+```bash
+# Check all containers are up
+docker compose ps
+
+# C++ edge node
+curl http://localhost:8081/api/v1/passengers
+
+# Java cloud node
+curl http://localhost:8082/api/v1/passengers
+
+# PostgreSQL direct access
+docker exec -it <postgres-container> psql -U ikos_admin -d pims_db
+```
+
+---
+
+## API Reference
+
+Both backends honour the same REST contract. Target either port interchangeably.
+
+### Register a passenger
+
+```bash
+# C++ edge node
+curl -s -X POST http://localhost:8081/api/v1/passengers \
+  -H "Content-Type: application/json" \
+  -d '{"firstName": "Hananah", "lastName": "Musa"}'
+
+# Java cloud node
+curl -s -X POST http://localhost:8082/api/v1/passengers \
+  -H "Content-Type: application/json" \
+  -d '{"firstName": "Herr", "lastName": "Emile"}'
+```
+
+**Response**
+```json-java
+{
+  "id": "e4b3b2a1-1234-5678-9abc-def012345678",
+  "firstName": "Hananah",
+  "lastName": "Musa",
+  "ticketStatus": "CONFIRMED"
+}
+
+json-c++
+{
+ "id": "e266337b-2526-9hsb-dfshjd6762728",
+ "firstName": "Herr",
+ "lastName": "Emile",
+ "ticketStatus": "CONFIRMED"
+}
+```
+
+### Get all passengers
+
+```bash
+curl -s http://localhost:8081/api/v1/passengers
+curl -s http://localhost:8082/api/v1/passengers
+```
+
+### Get passenger by ID
+
+```bash
+curl -s http://localhost:8081/api/v1/passengers/<id>
+curl -s http://localhost:8082/api/v1/passengers/<id>
+```
+
+---
+
+## Git Workflow
+
+This project uses **Git Flow** with **Conventional Commits**.
+
+### Branch naming
+
+```
+main                    → stable, tagged releases only
+develop                 → integration branch
+feature/<description>   → new functionality
+chore/<description>     → tooling, config, docs
+hotfix/<description>    → emergency production fix
+```
+
+### Commit format
+
+```
+<type>(<scope>): <short imperative summary>
+```
+
+**Types:** `feat` · `fix` · `chore` · `docs` · `test` · `refactor`  
+**Scopes:** `cpp-backend` · `java-backend` · `infra`
+
+### Example commits from this project
+
+```
+feat(cpp-backend): add PassengerController with POST and GET endpoints
+feat(java-backend): add PassengerController and JPA repository
+chore(infra): add docker-compose with PostgreSQL, C++ and Java services
+fix(cpp-backend): resolve make_shared string conversion in controller
+docs: add full project README with architecture and API reference
+```
+
+---
+
+## Roadmap
+
+### v1.0.0 — Current (Dual-stack MVP)
+- [x] C++ Oatpp backend — POST and GET passengers
+- [x] Java Spring Boot backend — POST and GET passengers
+- [x] Shared PostgreSQL database with pessimistic locking
+- [x] Full Docker Compose orchestration
+- [x] Identical REST contract across both stacks
+
+### v1.1.0 — Architecture refactor
+- [ ] Refactor C++ backend to **Hexagonal (Ports & Adapters)** architecture
+  - Separate domain entity (`Passenger`) from controller and repository
+  - Define `IPassengerRepository` port interface
+  - Move SQL to outbound adapter, HTTP to inbound adapter
+- [ ] Add ticketing-service (C++, port 8083)
+- [ ] Add journey-planner service (C++, port 8084)
+
+### v1.2.0 — Event streaming
+- [ ] Apache Kafka for async domain events (`journey.delayed`, `passenger.registered`)
+- [ ] display-service — real-time platform board updates via WebSocket
+- [ ] notification-service — SMS/Email delay alerts
+
+### v1.3.0 — Production hardening
+- [ ] VDV 452/454 German transport data standard compliance
+- [ ] Kubernetes manifests for all services
+- [ ] Prometheus metrics + Grafana dashboards
+- [ ] Load testing: p95 < 100ms at 500 RPS
+
+---
+
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+*Built for IKOS — German public transport infrastructure.*  
+*Author: John-Daniel Ikechukwu*
