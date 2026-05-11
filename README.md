@@ -60,8 +60,10 @@ graph TD
 cd IKOS-PIMS
 
 One-Click Build & Start:
-    Bashdocker-compose up --build
-    
+    ```
+    docker-compose up --build
+    ```
+
 Note: 
     This command will initialize the database, compile the C++ binary from source, and launch the Java JAR.
     
