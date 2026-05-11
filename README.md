@@ -56,8 +56,12 @@ graph TD
     }
 
     
-🚀 Deployment & Quick StartPrerequisitesDocker and Docker Compose installed.ExecutionClone and Initialize:Bashgit clone [https://github.com/johdanike/IKOS-PIMS.git](https://github.com/johdanike/IKOS-PIMS.git)
-cd IKOS-PIMS
+🚀 Deployment & Quick StartPrerequisitesDocker and Docker Compose installed.ExecutionClone and Initialize:
+    ```
+    git clone [https://github.com/johdanike/IKOS-PIMS.git](https://github.com/johdanike/IKOS-PIMS.git)
+    
+    cd IKOS-PIMS
+    ```
 
 One-Click Build & Start:
     ```
