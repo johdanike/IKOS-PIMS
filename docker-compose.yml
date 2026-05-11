@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # --- PERSISTENCE LAYER ---
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: ikos_db
+    environment:
+      POSTGRES_USER: ikos_admin
+      POSTGRES_PASSWORD: admin_password
+      POSTGRES_DB: pims_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ikos_admin -d pims_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- JAVA CLOUD NODE ---
+  pims-java:
+    build:
+      context: ./java-pims-backend
+      dockerfile: Dockerfile
+    container_name: pims_java_service
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/pims_db
+      - SPRING_DATASOURCE_USERNAME=ikos_admin
+      - SPRING_DATASOURCE_PASSWORD=admin_password
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    restart: on-failure
+
+  # --- C++ EDGE NODE ---
+  pims-cpp:
+    build:
+      context: ./cpp-backend
+      dockerfile: Dockerfile
+    container_name: pims_cpp_service
+    ports:
+      - "8081:8081"
+    environment:
+      - DB_CONN_STR=postgresql://ikos_admin:admin_password@postgres-db:5432/pims_db
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+
+networks:
+  default:
+    name: ikos-pims-network

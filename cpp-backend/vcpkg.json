@@ -1,0 +1,8 @@
+{
+  "name": "ikos-pims-cpp",
+  "version": "0.1.0",
+  "dependencies": [
+    "oatpp",
+    "nlohmann-json"
+  ]
+}
